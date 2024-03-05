@@ -1,0 +1,34 @@
+global:
+  scrape_interval:     5s # El intervalo en el que se traerá las métricas
+  evaluation_interval: 5s # Evaluará las reglas cada 30 segundos, por defecto es cada minuto
+
+scrape_configs:
+
+  - job_name: 'Prometheus_master'
+    honor_labels: true
+    metrics_path: '/federate'
+    params:
+      'match[]':
+        - '{__name__=~".+"}'
+    static_configs:
+      # ------------------------------------- #
+      - targets: [ '172.24.100.98:9090']  # Raspberry pi 1
+        labels:
+          pais: ES
+          entorno: RP1
+          cliente: victor
+          hostname: raspberrypi1
+      # ------------------------------------- #
+      - targets: [ '172.24.100.10:9090']  # Raspberry pi 3
+        labels:
+          pais: ES
+          entorno: RP4
+          cliente: victor
+          hostname: raspberrypi4
+      # ------------------------------------- #
+      - targets: [ '172.24.100.11:9090']  # Raspberry pi 3
+        labels:
+          pais: ES
+          entorno: RP6
+          cliente: victor
+          hostname: raspberrypi6
