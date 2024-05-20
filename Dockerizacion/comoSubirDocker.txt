@@ -1,0 +1,6 @@
+
+
+Todo con sudo:
+docker tag nombre-de-imagen nombre-de-usuario/nombre-de-imagen:etiqueta
+docker login
+docker push nombre-de-usuario/nombre-de-imagen:etiqueta

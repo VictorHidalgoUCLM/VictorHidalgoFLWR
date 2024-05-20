@@ -1,0 +1,35 @@
+global:
+  evaluation_interval: 5s
+  scrape_interval: 5s
+scrape_configs:
+- honor_labels: true
+  job_name: Prometheus_master
+  metrics_path: /federate
+  params:
+    match[]:
+    - '{__name__=~".+"}'
+  static_configs:
+  - labels:
+      client: victor
+      country: ES
+      environment: RP1
+      hostname: raspberrypi1
+      target: 172.24.100.98:9090
+    targets:
+    - 172.24.100.98:9090
+  - labels:
+      client: victor
+      country: ES
+      environment: RP4
+      hostname: raspberry4
+      target: 172.24.100.10:9090
+    targets:
+    - 172.24.100.10:9090
+  - labels:
+      client: victor
+      country: ES
+      environment: RP6
+      hostname: raspberry6
+      target: 172.24.100.11:9090
+    targets:
+    - 172.24.100.11:9090
