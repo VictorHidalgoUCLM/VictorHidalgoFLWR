@@ -154,7 +154,12 @@ class FedAvgCustom(FedAvg):
         # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
         aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures)
         
-        directory_name = os.path.expanduser(self.config.get('configPaths', 'checkpoint').format(strategy=self.strategy_name, num_exec=self.config.getint('configVariable', 'num_exec')))
+        directory_name = os.path.expanduser(
+            self.config.get('configPaths', 'checkpoint').format(
+                strategy=self.strategy_name,
+                num_exec=self.config.getint('configVariable', 'num_exec')
+            )
+        )
 
         if not os.path.exists(directory_name):
             os.makedirs(directory_name)

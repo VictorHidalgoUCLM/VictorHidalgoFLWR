@@ -1,7 +1,7 @@
 """
 This code runs the server and remote clients in the Federated Learning (FL)
 process, allowing the execution of multiple consecutive configurations. Executes
-num_exec times the same configuration, written at "./config.ini" with "./config_writer.py"
+num_exec times the same configuration, written at "./config.ini".
 
 Each different thread executes and terminates the server/client code, and checks
 every 10 seconds if Ctrl-C has been detected, or if process has terminated normally or if
@@ -35,27 +35,31 @@ def get_last_round(config):
     the program terminated abruptly, returning the next round to execute.
     """
 
+    # Get strategy and directory name of current execution
     strategy_name = config.get('configVariable', 'strategy')
-    directory_name = os.path.expanduser(config.get('configPaths', 'checkpoint').format(strategy=strategy_name, num_exec=config.getint('configVariable', 'num_exec')))
+    directory_name = os.path.expanduser(
+        config.get('configPaths', 'checkpoint').format(
+            strategy=strategy_name,
+            num_exec=config.getint('configVariable', 'num_exec')
+        )
+    )
 
+    # If path does not exist, returns 0
     if not os.path.exists(directory_name):
-        os.makedirs(directory_name)
+        return 0
 
+    # Defines file_pattern for searching checkpoints and searches all of them
     file_pattern = "round-*-weights.npz"
     files = [file for file in os.listdir(directory_name) if fnmatch.fnmatch(file, file_pattern)]
 
+    # Returns maximum round achieved before
     if files:
-        # Extraer el número de ronda de cada file
         round_numbers = [int(re.search(r"round-(\d+)-weights\.npz", file).group(1)) for file in files]
         return max(round_numbers)
-    
-    else:
-        return 0
-
 
 def code_local(file_name, event, config):
     """
-    Contains the code to be executed on the FL server and its termination code.
+    Contains the local code to be executed on the FL server and its termination code.
     """
 
     print(f"Local thread running FL server...")
@@ -82,11 +86,12 @@ def code_local(file_name, event, config):
 
 def code_thread(id, user, ip, file_name, event):
     """
-    Contains the code to be executed on an FL client and its termination code.
+    Contains the remote code to be executed on an FL client and its termination code.
     """
 
     print(f"Remote thread {id} running FL client...")
 
+    # Always restart Prometheus and redownload docker container
     comm_list = [
         "cd slave",
         "docker-compose down",
@@ -105,13 +110,6 @@ def code_thread(id, user, ip, file_name, event):
 
     # Checks if it has to end every 10 seconds
     while process.poll() is None and not os.path.exists(file_name) and not event.is_set():
-        if process.poll() is not None:
-            print("Reason: process.poll() is not None")
-        elif os.path.exists(file_name):
-            print("Reason: file_name exists")
-        elif event.is_set():
-            print("Reason: event is set")
-
         time.sleep(10)
 
     # If it has to end, waits for server stopping and client process ends
@@ -124,6 +122,12 @@ def code_thread(id, user, ip, file_name, event):
 
 
 def main():
+    """
+    Main code where it is defined the number of executions for each strategy
+    and the list of strategies, a for loop iterates over every strategy num_exec
+    times.
+    """
+
     # Event variable and SIGINT handler
     event = threading.Event()
     signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, event))
@@ -142,9 +146,9 @@ def main():
     num_exec = 10
     strategies = ["FedAvg", "FedProx", "FedOpt"]
 
-    # Foor loop for each strategy
+    # Foor each strategy
     for strategy in strategies:
-        # For loop for each execution
+        # For each execution
         for act_exec in range(num_exec):
             # Set current for loop configuration at config file
             config['configVariable'] = {

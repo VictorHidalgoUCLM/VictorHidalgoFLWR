@@ -5,18 +5,24 @@ import time
 import csv
 import configparser
 
-# Ruta al archivo de configuración
+# Reads config_file from CONFIG_PATH
 ruta_config = os.environ.get('CONFIG_PATH')
 config_file = configparser.ConfigParser()
 config_file.read(ruta_config)
 
-# Obtener configuraciones del archivo
+# Get num_exec, strategy_name and ruta_metrics from config file
 num_exec = config_file.get('configVariable', 'num_exec')
 strategy_name = config_file.get('configVariable', 'strategy')
 
 ruta_metrics = os.path.expanduser(config_file.get('configPaths', 'metrics').format(strategy=strategy_name))
 
+# Class DataAnalyst
 class DataAnalyst:
+    """
+    This class defines functions for measuring and storing metrics locally executing
+    recursive queries.
+    """
+
     def __init__(
             self,
             prometheus_config_path,
@@ -24,7 +30,8 @@ class DataAnalyst:
             image,
             num_exec,
             config):
-        # Inicialización de variables
+
+        # Other variables
         self.init_time = 0
         self.prometheus_config_path = prometheus_config_path
         self.prometheus_url = prometheus_url
@@ -32,7 +39,7 @@ class DataAnalyst:
         self.num_exec = num_exec
         self.config = config
 
-        # Variables para el tiempo y las consultas
+        # Variables for time and queries
         self.elapsed_time = 0
         self.prometheus_api_url = f"{self.prometheus_url}/api/v1/query"
         self.raspberry_pis = []
@@ -42,14 +49,16 @@ class DataAnalyst:
         self.result_one_time = []
         self.result_recursive = []
 
-        # Contador para detectar caidas de las raspberries 
+        # Several counters for error detection
         self.same_cpu_counter = []
         self.prev_values = []
 
 
     def get_hostnames(self):
-        # Obtener nombres de host desde el archivo de configuración de
-        # Prometheus
+        """
+        Function that searches for client hostnames defined at prometheus
+        YAML config file through scraping.
+        """
         with open(self.prometheus_config_path, 'r') as config_file:
             config_data = yaml.safe_load(config_file)
 
@@ -61,14 +70,20 @@ class DataAnalyst:
                                 hostname = static_config['labels'].get(
                                     'hostname')
                                 if hostname:
+
+                                    # Append to raspberry_pis list
                                     self.raspberry_pis.append(hostname)
 
+        # Init counter values
         self.same_cpu_counter = [0] * len(self.raspberry_pis)
         self.prev_values = [0] * len(self.raspberry_pis)
 
 
     def create_queries(self):
-        # Crear consultas para una vez y consultas recursivas
+        """
+        Create_queries defines recursive_queries and one_time_queries for each hostname.
+        It saves the complete list of queries that later will be made.
+        """
         recursive_queries = [
             'container_network_transmit_bytes_total{{hostname="{pi}",image="{image}"}}',
             'container_network_receive_bytes_total{{hostname="{pi}",image="{image}"}}',
@@ -110,7 +125,9 @@ class DataAnalyst:
             self.queries_one_time.append(queries)
 
     def execute_query(self, queries):
-        # Ejecutar consultas y obtener resultados
+        """
+        This function executes several queries and returns its result
+        """
         result = []
 
         for query in queries:
@@ -128,7 +145,10 @@ class DataAnalyst:
         return result
 
     def execute_one_time_queries(self):
-        # Ejecutar consultas de una vez y manejar resultados
+        """
+        Function that executes all one_time_queries and waits until
+        all clients have answered.
+        """
         for query in self.queries_one_time:
             query_result = self.execute_query(query)
 
@@ -145,7 +165,10 @@ class DataAnalyst:
         self.init_time = time.time()
 
     def execute_recursive_queries(self):
-        # Ejecutar consultas recursivas y manejar resultados
+        """
+        Function that executes recursive queries (only one time)
+        """
+
         self.elapsed_time = int(time.time() - self.init_time)
         self.result_recursive = []
 
@@ -157,7 +180,11 @@ class DataAnalyst:
             self.result_recursive.append(query_values)
 
     def export_data(self):
-        # Exportar datos a archivos CSV
+        """
+        Main function of DataAnalyst class. This function determines each client
+        number of CPUs, RAM and Swap memory, and writes all data formatted at
+        output_file, defined earlier in config file.
+        """
         for i, _ in enumerate(self.raspberry_pis):
             output_file = self.output_files[i]
 
@@ -167,6 +194,8 @@ class DataAnalyst:
 
             result = self.result_recursive[i]
             
+            # Writes header row if file is new and the data row obtained
+            # as a result
             with open(output_file, 'a', newline='') as csvfile:
                 csv_writer = csv.writer(csvfile)
 
@@ -188,6 +217,7 @@ class DataAnalyst:
                 row = [self.elapsed_time] + [float(value) for value in result[:5]]
                 csv_writer.writerow(row)
 
+            # Checks if any client is about to fail
             if self.prev_values[i] == row[3]:
                 self.same_cpu_counter[i] += 1
 

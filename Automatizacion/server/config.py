@@ -1,4 +1,3 @@
-# Archivo: config.py
 import os
 
 config_path = os.path.expanduser("~/Escritorio/devices_configs/master/prometheus.yml")
