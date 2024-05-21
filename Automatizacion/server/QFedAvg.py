@@ -1,80 +1,41 @@
-# Copyright 2020 Flower Labs GmbH. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""FAIR RESOURCE ALLOCATION IN FEDERATED LEARNING [Li et al., 2020] strategy.
-
-Paper: openreview.net/pdf?id=ByexElSYDr
-"""
-
-from itertools import count
-from logging import WARNING
-from typing import Callable, Dict, List, Optional, Tuple, Union
-
-import ast
-import numpy as np
+# Flwr imports
+from flwr.server.strategy import QFedAvg
+from typing import Dict, List, Optional, Tuple, Union
 from flwr.common import (
-    EvaluateIns,
     EvaluateRes,
     FitIns,
     FitRes,
-    MetricsAggregationFn,
-    NDArrays,
     Parameters,
     Scalar,
+    NDArrays,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.common.logger import log
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
-
+from flwr.common.logger import log
 from flwr.server.strategy.aggregate import aggregate_qffl, weighted_loss_avg
-from flwr.server.strategy.qfedavg import QFedAvg
 
-from config import config_path, prometheus_url, image, sleep_time
-import threading
-import sys
+# Utility imports
+from ExportThread import ExportThread
 import os
-
+import ast
+import numpy as np
 from data_analyst import DataAnalyst
 import configparser
-import time
 import pandas as pd
-import flwr as fl
-import numpy as np
+from logging import WARNING
 
-class ExportThread(threading.Thread):
-    def __init__(self, analyst_instance, sleep_time):
-        super().__init__()
-        self.analyst_instance = analyst_instance
-        self.sleep_time = sleep_time
-
-    def run(self):
-        try:
-            while True:
-                self.analyst_instance.execute_recursive_queries()
-                self.analyst_instance.export_data()
-                time.sleep(self.sleep_time)
-
-        except IndexError as e:
-            print("Error en Run")
-
-# pylint: disable=too-many-locals
 class QFedAvgCustom(QFedAvg):
-    """Configurable QFedAvg strategy implementation."""
+    """
+    Class that modifies the original behaviour of QFedAvg, allowing the server
+    to configure client options (epochs, batch_size...) and query to prometheus
+    from server, storing all data locally.
 
-    # pylint: disable=too-many-arguments,too-many-instance-attributes
+    Its init method receives num_exec and strategy_name, which will be used to
+    store metrics and results.
+    """
+
     def __init__(self, num_exec, strategy_name, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_exec = num_exec
@@ -89,6 +50,8 @@ class QFedAvgCustom(QFedAvg):
 
         self.configDevices = self.config.items('configDevices')
         listDispositivos = list(dict(self.configDevices))
+
+        self.sleep_time = self.config.getint('configPrometheus', 'sleep_time')
 
         data = {
             'Global_accuracy': [],
@@ -106,9 +69,16 @@ class QFedAvgCustom(QFedAvg):
         self.df_fit = pd.DataFrame(data)
 
     def set_round_offset(self, offset):
+        """
+        This function receives a number (offset) and stores it at self.round_offset
+        """
         self.round_offset = offset
 
     def getConfig(self):
+        """
+        This function reads client configs and returns them.
+        """
+
         epochs_list = ast.literal_eval(self.config.get('configClient', 'epochs'))
         batches_list = ast.literal_eval(self.config.get('configClient', 'batch_size'))
         subsets_list = ast.literal_eval(self.config.get('configClient', 'subset_size'))
@@ -118,8 +88,11 @@ class QFedAvgCustom(QFedAvg):
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
+        """
+        This function adds epochs, batch_size and subset_size to client configuration on fit.
+        Additionally, it starts a thread that will execute metric querying.
+        """
 
-        """Configure the next round of training."""
         # Obtener pares cliente/configuración estándar de la superclase FedAvg
         client_config_pairs = super().configure_fit(
             server_round, parameters, client_manager
@@ -145,7 +118,7 @@ class QFedAvgCustom(QFedAvg):
 
         # Inicializar análisis de datos si es la primera ronda
         if server_round == 1:
-            analyst = DataAnalyst(config_path, prometheus_url, image, self.num_exec, self.strategy_name)
+            analyst = DataAnalyst(self.num_exec, self.strategy_name)
 
             # Obtener nombres de host y crear consultas
             analyst.get_hostnames()
@@ -155,7 +128,7 @@ class QFedAvgCustom(QFedAvg):
             analyst.execute_one_time_queries()
 
             # Iniciar hilo de exportación de datos
-            export_thread = ExportThread(analyst, sleep_time)
+            export_thread = ExportThread(analyst, self.sleep_time)
             export_thread.daemon = True
             export_thread.start()
 
@@ -177,7 +150,11 @@ class QFedAvgCustom(QFedAvg):
         results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate fit results using weighted average."""
+        """
+        This function receives aggregate results and aggregate them, if current
+        round is multiple of 5, a checkpoint is saved on serverside.
+        """
+
         if not results:
             return None, {}
         # Do not aggregate if there are failures and failures are not accepted
@@ -266,7 +243,7 @@ class QFedAvgCustom(QFedAvg):
 
         if aggregated_parameters is not None:
             # Convert `Parameters` to `List[np.ndarray]`
-            aggregated_ndarrays: List[np.ndarray] = fl.common.parameters_to_ndarrays(aggregated_parameters)
+            aggregated_ndarrays: List[np.ndarray] = parameters_to_ndarrays(aggregated_parameters)
 
             # Save aggregated_ndarrays
             print(f"Saving round {server_round} aggregated_ndarrays...")
@@ -283,6 +260,9 @@ class QFedAvgCustom(QFedAvg):
         results: List[Tuple[ClientProxy, EvaluateRes]],
         failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
     ) -> Tuple[Optional[float], Dict[str, Scalar]]:
+        """
+        This function receives evaluate results from clients and aggregates the results.
+        """
         
         loss_aggregated, metrics_aggregated = super().aggregate_evaluate(server_round, results, failures)
 

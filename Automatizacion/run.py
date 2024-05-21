@@ -143,8 +143,8 @@ def main():
     path_exception = os.path.expanduser(config.get('configPaths', 'exception'))
     
     # Number of executions and list of strategies
-    num_exec = 10
-    strategies = ["FedAvg", "FedProx", "FedOpt"]
+    num_exec = 1
+    strategies = ["FedAvg"]
 
     # Foor each strategy
     for strategy in strategies:

@@ -14,6 +14,10 @@ config_file.read(ruta_config)
 num_exec = config_file.get('configVariable', 'num_exec')
 strategy_name = config_file.get('configVariable', 'strategy')
 
+config_path = config_file.get('configPaths', 'prometheus_path')
+prometheus_url = config_file.get('configPrometheus', 'prometheus_url')
+image_name = config_file.get('configPrometheus', 'image_name')
+
 ruta_metrics = os.path.expanduser(config_file.get('configPaths', 'metrics').format(strategy=strategy_name))
 
 # Class DataAnalyst
@@ -25,17 +29,14 @@ class DataAnalyst:
 
     def __init__(
             self,
-            prometheus_config_path,
-            prometheus_url,
-            image,
             num_exec,
             config):
 
         # Other variables
         self.init_time = 0
-        self.prometheus_config_path = prometheus_config_path
+        self.prometheus_config_path = os.path.expanduser(config_path)
         self.prometheus_url = prometheus_url
-        self.image = image
+        self.image = image_name
         self.num_exec = num_exec
         self.config = config
 

@@ -1,4 +1,5 @@
 from configparser import ConfigParser
+import os
 
 # Set sections
 config = ConfigParser()
@@ -9,6 +10,13 @@ configPaths = {
     "logs": f"~/Escritorio/results/{{strategy}}/logs",
     "server": "~/Escritorio/Automatizacion/server/server.py",
     "exception": "~/Escritorio/exception.txt",
+    "prometheus_path": "~/Escritorio/devices_configs/master/prometheus.yml",
+}
+
+configPrometheus = {
+    "prometheus_url": "http://localhost:9090",
+    "image_name": "victorhidalgo/client",
+    "sleep_time": "5",
 }
 
 configFixed = {
@@ -28,15 +36,15 @@ configFixed = {
 }
 
 configClient = {
-    'epochs': ["3", "3", "12"],
-    'batch_size': ["32", "32", "64"],
-    'subset_size': ["1000", "1000", "3000"],
+    'epochs': ["3", "3", "3"],
+    'batch_size': ["32", "32", "32"],
+    'subset_size': ["500", "500", "500"],
 }
 
 configDevices = {
     'raspberrypi1': ['172.24.100.98', 'ES', 'RP1', 'victor'],
     'raspberry4': ['172.24.100.10', 'ES', 'RP4', 'victor'],
-    'raspberry3': ['172.24.100.105', 'ES', 'RP3', 'victor'],
+    'raspberry6': ['172.24.100.11', 'ES', 'RP6', 'victor'],
 }
 
 # Individual configurations for strategies
@@ -59,6 +67,7 @@ configFedYogi = {
 
 config['configPaths'] = {**configPaths}
 config['configFixed'] = {**configFixed}
+config['configPrometheus'] = {**configPrometheus}
 config['configClient'] = {**configClient}
 config['configDevices'] = {**configDevices}
 config['configFedProx'] = {**configFedProx}
@@ -66,7 +75,7 @@ config['configQFedAvg'] = {**configQFedAvg}
 config['configFedYogi'] = {**configFedYogi}
 
 # Write config at config.ini
-file_path = "config.ini"
+file_path = os.path.expanduser("~/Escritorio/devices_configs/config.ini")
 with open(file_path, "w") as config_file:
     config.write(config_file)
 
