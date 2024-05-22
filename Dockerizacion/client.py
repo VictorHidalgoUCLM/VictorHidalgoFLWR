@@ -126,6 +126,6 @@ class CifarClient(fl.client.NumPyClient):
 
 
 # Starts federated client
-fl.client.start_numpy_client(server_address="172.24.100.129:8080",  # Server IP
-                             client=CifarClient(),  # Client code is new instace of CifarClient class
+fl.client.start_client(server_address="172.24.100.129:8080",  # Server IP
+                             client=CifarClient().to_client(),  # Client code is new instace of CifarClient class
                              )
