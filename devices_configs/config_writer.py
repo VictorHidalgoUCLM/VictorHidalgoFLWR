@@ -24,19 +24,19 @@ configFixed = {
     'initial_parameters': "server_side",
     'fit_metrics_aggregation_fn': 'fit_weighted_average',
     'evaluate_metrics_aggregation_fn': 'evaluate_weighted_average',
-    'rounds': '30',
+    'rounds': '50',
 }
 
 configClient = {
-    'epochs': ["3", "3", "12"],
-    'batch_size': ["32", "32", "64"],
-    'subset_size': ["1000", "1000", "3000"],
+    'epochs': ["3", "3", "3"],
+    'batch_size': ["32", "32", "32"],
+    'subset_size': ["2000", "2000", "2000"],
 }
 
 configDevices = {
     'raspberrypi1': ['172.24.100.98', 'ES', 'RP1', 'victor'],
     'raspberry4': ['172.24.100.10', 'ES', 'RP4', 'victor'],
-    'raspberry3': ['172.24.100.105', 'ES', 'RP3', 'victor'],
+    'raspberry6': ['172.24.100.11', 'ES', 'RP6', 'victor'],
 }
 
 # Individual configurations for strategies

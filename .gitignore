@@ -1,3 +1,4 @@
 **/checkpoints/
+**/__pycache_/
 passwords.txt
 resumen.txt

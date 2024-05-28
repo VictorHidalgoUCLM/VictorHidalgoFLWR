@@ -1,28 +1,13 @@
-# Copyright 2020 Flower Labs GmbH. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""FAIR RESOURCE ALLOCATION IN FEDERATED LEARNING [Li et al., 2020] strategy.
-
-Paper: openreview.net/pdf?id=ByexElSYDr
-"""
-
-from itertools import count
-from logging import WARNING
-from typing import Callable, Dict, List, Optional, Tuple, Union
-
+from flwr.server.strategy import QFedAvg
+from config import config_path, prometheus_url, image, sleep_time
+import os
+import threading
 import ast
 import numpy as np
+import flwr as fl
+import time
+
+from typing import Dict, List, Optional, Tuple, Union
 from flwr.common import (
     EvaluateIns,
     EvaluateRes,
@@ -35,24 +20,16 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.common.logger import log
+from flwr.server.strategy.aggregate import aggregate_qffl
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
-
-from flwr.server.strategy.aggregate import aggregate_qffl, weighted_loss_avg
-from flwr.server.strategy.qfedavg import QFedAvg
-
-from config import config_path, prometheus_url, image, sleep_time
-import threading
-import sys
-import os
+from flwr.common.logger import log
 
 from data_analyst import DataAnalyst
 import configparser
-import time
 import pandas as pd
-import flwr as fl
-import numpy as np
+from logging import WARNING
+
 
 class ExportThread(threading.Thread):
     def __init__(self, analyst_instance, sleep_time):
@@ -93,15 +70,27 @@ class QFedAvgCustom(QFedAvg):
         data = {
             'Global_accuracy': [],
             'Global_loss': [],
+            'Global_precision': [],
+            'Global_recall': [],
+            'Global_f1_score': [],
             'Local_accuracy': [],
-            'Local_loss': []
+            'Local_loss': [],
+            'Local_precision': [],
+            'Local_recall': [],
+            'Local_f1_score': [],
         }
 
         for dispositivo in listDispositivos:
             data[dispositivo + '_fit_accuracy'] = []
             data[dispositivo + '_fit_loss'] = []
+            data[dispositivo + '_fit_precision'] = []
+            data[dispositivo + '_fit_recall'] = []
+            data[dispositivo + '_fit_f1_score'] = []
             data[dispositivo + '_ev_accuracy'] = []
             data[dispositivo + '_ev_loss'] = []
+            data[dispositivo + '_ev_precision'] = []
+            data[dispositivo + '_ev_recall'] = []
+            data[dispositivo + '_ev_f1_score'] = []
 
         self.df_fit = pd.DataFrame(data)
 
@@ -256,10 +245,10 @@ class QFedAvgCustom(QFedAvg):
             os.makedirs(directory_name)
 
         for client_proxy, fit_res in results:
-            for nombre, valores in self.configDevices:
+            for name, valores in self.configDevices:
                 try:
                     client_proxy.cid.index(eval(valores)[0])
-                    self.df_fit.loc[0, [nombre + '_fit_accuracy', nombre + '_fit_loss']] = [fit_res.metrics['accuracy'], fit_res.metrics['loss_distributed']]
+                    self.df_fit.loc[0, [name + '_fit_accuracy', name + '_fit_loss', name + '_fit_precision', name + '_fit_recall', name + '_fit_f1_score']] = [fit_res.metrics['accuracy'], fit_res.metrics['loss_distributed'], fit_res.metrics['precision'], fit_res.metrics['recall'], fit_res.metrics['f1_score']]
 
                 except ValueError:
                     pass
@@ -272,7 +261,7 @@ class QFedAvgCustom(QFedAvg):
             print(f"Saving round {server_round} aggregated_ndarrays...")
             np.savez(f"{directory_name}/round-{server_round+self.round_offset}-weights.npz", *aggregated_ndarrays)
 
-            self.df_fit.loc[0, ['Local_accuracy', 'Local_loss']] = [aggregated_metrics['accuracy'], aggregated_metrics['loss_distributed']]
+            self.df_fit.loc[0, ['Local_accuracy', 'Local_loss', 'Local_precision', 'Local_recall', 'Local_f1_score']] = [aggregated_metrics['accuracy'], aggregated_metrics['loss_distributed'], aggregated_metrics['precision'], aggregated_metrics['recall'], aggregated_metrics['f1_score']]
 
         return parameters_aggregated, metrics_aggregated
     
@@ -292,16 +281,16 @@ class QFedAvgCustom(QFedAvg):
             os.makedirs(directory_name)
 
         for client_proxy, evaluate_res in results:
-            for nombre, valores in self.configDevices:
+            for name, valores in self.configDevices:
                 try:
                     client_proxy.cid.index(eval(valores)[0])
-                    self.df_fit.loc[0, [nombre + '_ev_accuracy', nombre + '_ev_loss']] = [evaluate_res.metrics['accuracy'], evaluate_res.loss]
+                    self.df_fit.loc[0, [name + '_ev_accuracy', name + '_ev_loss', name + '_ev_precision', name + '_ev_recall', name + '_ev_f1_score']] = [evaluate_res.metrics['accuracy'], evaluate_res.loss, evaluate_res.metrics['precision'], evaluate_res.metrics['recall'], evaluate_res.metrics['f1_score']]
 
                 except ValueError:
                     pass
 
         if loss_aggregated is not None and metrics_aggregated is not None:
-            self.df_fit.loc[0, ['Global_accuracy', 'Global_loss']] = [metrics_aggregated['accuracy'], loss_aggregated]
+            self.df_fit.loc[0, ['Global_accuracy', 'Global_loss', 'Global_precision', 'Global_recall', 'Global_f1_score']] = [metrics_aggregated['accuracy'], loss_aggregated, metrics_aggregated['precision'], metrics_aggregated['recall'], metrics_aggregated['f1_score']]
 
             if not os.path.exists(f"{directory_name}/log_{self.num_exec}.csv"):
                 self.df_fit.to_csv(f'{directory_name}/log_{self.num_exec}.csv', index=False, header=True)

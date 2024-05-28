@@ -16,8 +16,61 @@ import flwr as fl
 import tensorflow as tf
 from tensorflow.python.keras.regularizers import l1_l2
 
+import tensorflow.keras.backend as K
+
 import numpy as np
 import math
+
+
+def recall_f(y_true, y_pred):
+    # Obtener las clases predichas
+    y_pred_classes = tf.argmax(y_pred, axis=-1)
+
+    # Convertir y_true a un formato que se pueda comparar
+    y_true = tf.cast(y_true, y_pred_classes.dtype)
+
+    # Calcular verdaderos positivos y posibles positivos por clase
+    recalls = []
+
+    for class_label in range(10):  # 10 clases en total
+        true_positives = K.sum(K.cast((y_true == class_label) & (y_pred_classes == class_label), dtype=tf.float32))
+        true_classes = K.sum(K.cast(y_true == class_label, dtype=tf.float32))
+        recalls.append(true_positives / (true_classes + K.epsilon()))
+        
+    # Calcular el recall ponderado
+    recall = tf.reduce_sum(recalls) / 10
+
+    return recall
+
+
+def precision_f(y_true, y_pred):
+    # Convertir probabilidades en predicciones de clases
+    y_pred_classes = tf.argmax(y_pred, axis=-1)
+    
+    # Convertir y_true a un formato que se pueda comparar
+    y_true = tf.cast(y_true, y_pred_classes.dtype)
+    
+    # Calcular verdaderos positivos y falsos positivos por clase
+    precisions = []
+
+    for class_label in range(10):  # 10 clases en total
+        true_positives = K.sum(K.cast((y_true == class_label) & (y_pred_classes == class_label), dtype=tf.float32))
+        precition_classes = K.sum(K.cast(y_pred_classes == class_label, dtype=tf.float32))
+        precisions.append(true_positives / (precition_classes + K.epsilon()))
+
+    precision = tf.reduce_sum(precisions) / 10
+
+    return precision
+
+
+def f1_score_f(y_true, y_pred):
+    precision_value = precision_f(y_true, y_pred)
+    recall_value = recall_f(y_true, y_pred)
+    
+    f1 = 2 * (precision_value * recall_value) / (precision_value + recall_value + K.epsilon())
+    
+    return f1
+
 
 # Each client defines its own emtpy model, using MobileNet as architecture of DNN
 model = tf.keras.applications.MobileNet((32, 32, 1), classes=10, weights=None)
@@ -82,7 +135,7 @@ class CifarClient(fl.client.NumPyClient):
             y_train = np.concatenate((y_train[start:], y_train[:end]))
 
         # Local model training, using read config
-        history = model.fit(
+        model.fit(
             x_train,
             y_train,
             epochs=epochs,
@@ -90,28 +143,29 @@ class CifarClient(fl.client.NumPyClient):
             steps_per_epoch=math.ceil(len(x_train) / batch_size)
         )
 
-        # Gets last fit accuracy and loss for saving later in server log
-        accuracy = history.history['accuracy'][-1]
-        loss_distributed = history.history['loss'][-1]
+        loss_distributed, accuracy = model.evaluate(x_train, y_train)
+        y_pred = model.predict(x_train)
+
+        recall = recall_f(y_train, y_pred)
+        precision = precision_f(y_train, y_pred)
+        f1_score = f1_score_f(y_train, y_pred)
 
         # If is needed to evaluate_on_fit
         if evaluate_on_fit:
             temp_param = model.get_weights()
 
             # Calls evaluate function
-            loss, _, _ = self.evaluate(temp_param, {})
+            loss, _, _, _, _ = self.evaluate(temp_param, {})
         
         else:
             loss = 0.0
 
         # Returns model weights, number of data used to train
         # and metrics for the server
-        return model.get_weights(), len(x_train), {"accuracy": float(accuracy), "loss": float(loss), "loss_distributed": float(loss_distributed)}
+        return model.get_weights(), len(x_train), {"accuracy": float(accuracy), "loss": float(loss), "loss_distributed": float(loss_distributed), "recall": float(recall), "precision": float(precision), "f1_score": float(f1_score)}
 
     def evaluate(self, parameters, config):
         """Evaluates a given model with data test"""
-
-        # Charges model weights
         model.set_weights(parameters)
 
         # Charges local-data test
@@ -120,9 +174,14 @@ class CifarClient(fl.client.NumPyClient):
 
         # Evaluates model with given parameters and test data
         loss, accuracy = model.evaluate(x_test, y_test)
+        y_pred = model.predict(x_test)
+
+        recall = recall_f(y_test, y_pred)
+        precision = precision_f(y_test, y_pred)
+        f1_score = f1_score_f(y_test, y_pred)
 
         # Returns loss
-        return loss, len(x_test), {"accuracy": float(accuracy)}
+        return loss, len(x_test), {"accuracy": float(accuracy), "recall": float(recall), "precision": float(precision), "f1_score": float(f1_score)}
 
 
 # Starts federated client

@@ -74,7 +74,9 @@ class DataAnalyst:
             'container_network_receive_bytes_total{{hostname="{pi}",image="{image}"}}',
             'container_cpu_usage_seconds_total{{hostname="{pi}",image="{image}"}}',
             'container_memory_usage_bytes{{hostname="{pi}",image="{image}"}}',
-            'node_memory_SwapFree_bytes{{hostname="{pi}"}}'
+            'node_memory_SwapFree_bytes{{hostname="{pi}"}}',
+            'node_thermal_zone_temp{{hostname="{pi}"}}',
+            'container_memory_failures_total{{hostname="{pi}",image="{image}",scope="container"}}'
             ]
 
         one_time_queries = [
@@ -85,7 +87,10 @@ class DataAnalyst:
             'container_network_receive_bytes_total{{hostname="{pi}",image="{image}"}}',
             'container_cpu_usage_seconds_total{{hostname="{pi}",image="{image}"}}',
             'container_memory_usage_bytes{{hostname="{pi}",image="{image}"}}',
-            'node_memory_SwapTotal_bytes{{hostname="{pi}"}}']
+            'node_memory_SwapTotal_bytes{{hostname="{pi}"}}',
+            'node_thermal_zone_temp{{hostname="{pi}"}}',
+            'container_memory_failures_total{{hostname="{pi}",image="{image}",scope="container"}}'
+            ]
 
         for raspberry_pi in self.raspberry_pis:
             # Crear directorios para almacenar resultados
@@ -178,6 +183,9 @@ class DataAnalyst:
                         'CPU_time(s)',
                         'RAM_usage(B)',
                         'Swap_free(B)',
+                        'Temp(C)',
+                        'Mem_fault',
+                        'Mem_majfault',
                         '',
                         int(cpu_total),
                         int(memory_total),
@@ -185,7 +193,7 @@ class DataAnalyst:
                     
                     csv_writer.writerow(header_row)
 
-                row = [self.elapsed_time] + [float(value) for value in result[:5]]
+                row = [self.elapsed_time] + [float(value) for value in result[:8]]
                 csv_writer.writerow(row)
 
             if self.prev_values[i] == row[3]:

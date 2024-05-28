@@ -101,7 +101,15 @@ def code_thread(id, user, ip, file_name, event):
     comm_term = f'ssh {user}@{ip} "(sudo pkill python3)"'
 
     # Execution of client process
-    process = subprocess.Popen(comm_exec, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+    process = subprocess.Popen(comm_exec, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = process.communicate()
+
+    # Imprime los resultados
+    print("Standard Output:")
+    print(stdout)
+
+    print("Standard Error:")
+    print(stderr)
 
     # Checks if it has to end every 10 seconds
     while process.poll() is None and not os.path.exists(file_name) and not event.is_set():
@@ -140,7 +148,7 @@ def main():
     
     # Number of executions and list of strategies
     num_exec = 10
-    strategies = ["FedAvg", "FedProx", "FedOpt"]
+    strategies = ["FedAvg", "FedProx", "FedOpt", "QFedAvg"]
 
     # Foor loop for each strategy
     for strategy in strategies:
