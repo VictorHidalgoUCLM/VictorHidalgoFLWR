@@ -10,6 +10,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
+import matplotlib.ticker as ticker
+
 plt.rcParams["font.family"] = "serif"
 
 def hex_to_rgb(hex_color):
@@ -36,10 +38,14 @@ def darken_color(hex_color, factor=0.8):
     # Convertir los nuevos valores RGB a código hexadecimal
     return rgb_to_hex((r_nuevo, g_nuevo, b_nuevo))
 
-metricas = ['accuracy', 'loss']
+def format_yticks(y, pos):
+    return f'{y:.2f}'
+
+
+metricas = ['accuracy', 'loss', 'precision', 'recall', 'f1_score']
 disp_color = ['tomato', 'greenyellow', 'aqua', 'violet']
 
-scenarios = ['FedAvg', 'FedOpt', 'FedProx']
+scenarios = ['FedAvg']
 
 for scenario in scenarios:
     if scenario == 'Escenario 1' or scenario == 'Escenario 3':
@@ -50,8 +56,8 @@ for scenario in scenarios:
         dispositivos = ['Global', 'raspberrypi1_ev', 'raspberry4_ev', 'raspberry3_ev']
         disp_name = ['Modelo agregado', 'Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 4 (RP3)']
     else:
-        dispositivos = ['Global', 'raspberrypi1_ev', 'raspberry4_ev', 'raspberry6_ev']
-        disp_name = ['Modelo agregado', 'Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP4)']
+        dispositivos = ['Global', 'raspberrypi1_ev', 'raspberry4_ev', 'raspberry3_ev']
+        disp_name = ['Modelo agregado', 'Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP3)']
 
     directorio = f"/home/usuario/Escritorio/results/{scenario}/logs"
 
@@ -64,8 +70,8 @@ for scenario in scenarios:
     disp_darkened = [darken_color(mcolors.to_hex(color)) for color in disp_color]
 
     # Crear subplots para cada combinación de métrica y dispositivo
-    fig, axs = plt.subplots(nrows=len(metricas), ncols=len(dispositivos), figsize=(16, 8), sharex=True, layout='constrained')
-    fig2, axs2 = plt.subplots(nrows=len(metricas), ncols=len(dispositivos), figsize=(16, 8), sharex=True, layout='constrained')
+    fig, axs = plt.subplots(nrows=len(metricas), ncols=len(dispositivos), figsize=(18, 9), sharex=True, layout='constrained')
+    fig2, axs2 = plt.subplots(nrows=len(metricas), ncols=len(dispositivos), figsize=(18, 9), sharex=True, layout='constrained')
 
     # Diccionario para almacenar los resultados de las pruebas
     resultados = {'Metrica': [], 'Dispositivo': [], 'Shapiro': [], 'Levene': [], 'ANOVA': [], 'Kruskal': []}
@@ -149,6 +155,7 @@ for scenario in scenarios:
             resultados['Kruskal'].append(resultado_kruskal)
 
             sns.boxplot(x='Ejecucion', y=col_name, data=df_logs, ax=ax, color=actual_colors[j])
+            ax.set_ylim(0, df_logs[col_name].max() * 1.1)
 
             if i == 0:
                 ax.set_title(f'{disp_name[j]}', fontsize=16, pad=16)
@@ -174,12 +181,14 @@ for scenario in scenarios:
                 max_accuracy = df_ejecucion_1[dispositivo+"_"+metrica].max()
 
                 yticks = list(ax.get_yticks()[:-2]) + [max_accuracy]
-                ax.set_yticks(yticks)
+
             else:
                 min_loss = df_ejecucion_1[dispositivo+"_"+metrica].min()
 
-                yticks = [min_loss, 0.5] + list(ax.get_yticks()[2:])
-                ax.set_yticks(yticks)
+                yticks = [min_loss] + list(ax.get_yticks()[2:])
+                
+            ax.set_yticks(yticks)
+            ax.yaxis.set_major_formatter(ticker.FuncFormatter(format_yticks))
 
     fig.savefig(f'{directorio_figuras}/boxandwhispers.png', dpi=150)
     fig2.savefig(f'{directorio_figuras}/histogram.png', dpi=150)
@@ -193,7 +202,7 @@ for scenario in scenarios:
 
     """Creación de la tabla que resume los test estadísticos"""
     # Crear la figura y el eje
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(8, 6))
 
     # Ocultar los ejes
     ax.axis('off')
@@ -257,20 +266,20 @@ for scenario in scenarios:
 
     ax1.set_ylabel('Accuracy')
     ax1.set_ylim(0,1)
-    ax1.set_xlim(1,50)
+    ax1.set_xlim(1,60)
     ax1.legend(loc='lower right', bbox_to_anchor=(1.0, 0.0))
 
 
     sns.lineplot(x=list(range(1, len(df_ejecucion_1)+1)), y='Global_loss', data=df_ejecucion_1, ax=ax2, label='Global loss', color='cornflowerblue')
     ax2.axhline(y=min_Global_loss, color='black', linestyle='--', linewidth=0.7, alpha=0.7)
 
-    yticks = [min_Global_loss, 0.5] + list(ax2.get_yticks()[2:])
+    yticks = [min_Global_loss] + list(ax2.get_yticks()[2:])
     ax2.set_yticks(yticks)
 
     ax2.set_xlabel('Ronda de Federated Learning')
     ax2.set_ylabel('Loss')
     ax2.set_ylim(0, df_ejecucion_1['Global_loss'].max() + 0.1)
-    ax2.set_xlim(1,50)
+    ax2.set_xlim(1,60)
 
     plt.tight_layout()
     plt.savefig(f'{directorio_figuras}/model.png', dpi=150)

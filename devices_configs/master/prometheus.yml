@@ -28,8 +28,8 @@ scrape_configs:
   - labels:
       client: victor
       country: ES
-      environment: RP6
-      hostname: raspberry6
-      target: 172.24.100.11:9090
+      environment: RP3
+      hostname: raspberry3
+      target: 172.24.100.105:9090
     targets:
-    - 172.24.100.11:9090
+    - 172.24.100.105:9090

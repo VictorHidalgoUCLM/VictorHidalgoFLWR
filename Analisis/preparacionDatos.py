@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 
-scenarios = ['FedProx', 'FedOpt']
+scenarios = ['FedAvg']
 
 for scenario in scenarios:
     directorio_logs = f"/home/usuario/Escritorio/results/{scenario}/logs"
@@ -12,7 +12,7 @@ for scenario in scenarios:
     elif scenario == "Escenario 2":
         dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry3']
     else:
-        dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry6']
+        dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry3']
 
     df_logs = pd.DataFrame()
 
@@ -38,7 +38,7 @@ for scenario in scenarios:
             df_metrics = pd.DataFrame()
 
             if i == 0:
-                df_fixed = pd.read_csv(f"{directorio_metrics_disp}/{metric_log}", usecols=[7, 8, 9], nrows=0)
+                df_fixed = pd.read_csv(f"{directorio_metrics_disp}/{metric_log}", usecols=[10, 11, 12], nrows=0)
                 list_fixed = df_fixed.columns.to_list()
 
                 cpu_total = int(list_fixed[0])
@@ -46,7 +46,7 @@ for scenario in scenarios:
                 swap_total = int(list_fixed[2])
 
             # Lee el archivo CSV
-            df_raw_metrics = pd.read_csv(f"{directorio_metrics_disp}/{metric_log}", usecols=[0, 1, 2, 3, 4, 5])
+            df_raw_metrics = pd.read_csv(f"{directorio_metrics_disp}/{metric_log}", usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8])
 
             # Preprocesamos los datos y los almacenamos en df_metrics
             df_metrics['Time_stamp(s)'] = df_raw_metrics['Time_stamp(s)'].diff().dropna().astype(pd.Int64Dtype())
@@ -61,6 +61,9 @@ for scenario in scenarios:
             df_metrics['RAM_usage(%)'] = (df_raw_metrics['RAM_usage(B)'] / ram_total * 100).astype(pd.Float64Dtype()).clip(lower=0, upper=100)
             df_metrics['Swap_usage(MB)'] = ((swap_total - df_raw_metrics['Swap_free(B)']) / 1024 / 1024).astype(pd.Float64Dtype())
             df_metrics['Swap_usage(%)'] = ((1 - df_raw_metrics['Swap_free(B)'] / swap_total) * 100).astype(pd.Float64Dtype()).clip(lower=0, upper=100)
+            df_metrics['Temp(ºC)'] = df_raw_metrics['Temp(C)'].astype(pd.Float64Dtype()).clip(lower=0)
+            df_metrics['Mem_faults'] = (df_raw_metrics['Mem_fault'].diff().dropna() / df_metrics['Time_stamp(s)']).astype(pd.Float64Dtype()).clip(lower=0)
+            df_metrics['Mem_majfaults'] = (df_raw_metrics['Mem_majfault'].diff().dropna() / df_metrics['Time_stamp(s)']).astype(pd.Float64Dtype()).clip(lower=0)
             df_metrics['Ejecucion'] = i+1
 
             df_total = pd.concat([df_total, df_metrics], ignore_index=True)

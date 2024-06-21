@@ -257,9 +257,10 @@ class QFedAvgCustom(QFedAvg):
             # Convert `Parameters` to `List[np.ndarray]`
             aggregated_ndarrays: List[np.ndarray] = fl.common.parameters_to_ndarrays(aggregated_parameters)
 
-            # Save aggregated_ndarrays
-            print(f"Saving round {server_round} aggregated_ndarrays...")
-            np.savez(f"{directory_name}/round-{server_round+self.round_offset}-weights.npz", *aggregated_ndarrays)
+            # Save aggregated_ndarrays every 5 rounds
+            if server_round % 5 == 0:
+                print(f"Saving round {server_round} aggregated_ndarrays...")
+                np.savez(f"{directory_name}/round-{server_round+self.round_offset}-weights.npz", *aggregated_ndarrays)
 
             self.df_fit.loc[0, ['Local_accuracy', 'Local_loss', 'Local_precision', 'Local_recall', 'Local_f1_score']] = [aggregated_metrics['accuracy'], aggregated_metrics['loss_distributed'], aggregated_metrics['precision'], aggregated_metrics['recall'], aggregated_metrics['f1_score']]
 

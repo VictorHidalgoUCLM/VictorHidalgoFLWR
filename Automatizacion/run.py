@@ -17,16 +17,20 @@ import fnmatch
 import re
 import signal
 import os
+import pandas as pd
 
+handler_flag = False
 
 def signal_handler(sig, frame, event):
     """
     Receives the signal to terminate the program, activates the event to 
     terminate all active threads.
     """
+    global handler_flag
 
     print("Ctrl-C detected. Terminating all threads...")
     event.set()     # This event will be read later on each thread
+    handler_flag = True
 
 
 def get_last_round(config):
@@ -93,7 +97,8 @@ def code_thread(id, user, ip, file_name, event):
         "docker-compose up -d",
         "cd ..",
         "docker pull victorhidalgo/client",
-        "docker run --rm -v ~/data:/data -it victorhidalgo/client",
+        'docker images -f "dangling=true" -q | xargs docker rmi',
+        'docker run --rm -v ~/data:/data -it victorhidalgo/client',
     ]
 
     # Definition of exec and term commands
@@ -101,26 +106,14 @@ def code_thread(id, user, ip, file_name, event):
     comm_term = f'ssh {user}@{ip} "(sudo pkill python3)"'
 
     # Execution of client process
-    process = subprocess.Popen(comm_exec, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = process.communicate()
-
-    # Imprime los resultados
-    print("Standard Output:")
-    print(stdout)
-
-    print("Standard Error:")
-    print(stderr)
+    process = subprocess.Popen(comm_exec, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
 
     # Checks if it has to end every 10 seconds
     while process.poll() is None and not os.path.exists(file_name) and not event.is_set():
-        if process.poll() is not None:
-            print("Reason: process.poll() is not None")
-        elif os.path.exists(file_name):
-            print("Reason: file_name exists")
-        elif event.is_set():
-            print("Reason: event is set")
-
         time.sleep(10)
+
+    if os.path.exists(file_name):
+        event.set()
 
     # If it has to end, waits for server stopping and client process ends
     time.sleep(15)
@@ -133,6 +126,8 @@ def code_thread(id, user, ip, file_name, event):
 
 def main():
     # Event variable and SIGINT handler
+    global handler_flag
+
     event = threading.Event()
     signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, event))
 
@@ -148,7 +143,7 @@ def main():
     
     # Number of executions and list of strategies
     num_exec = 10
-    strategies = ["FedAvg", "FedProx", "FedOpt", "QFedAvg"]
+    strategies = ["FedAvg"]
 
     # Foor loop for each strategy
     for strategy in strategies:
@@ -159,6 +154,8 @@ def main():
                 'num_exec': f"{act_exec+1}",
                 'strategy': strategy,
             }
+
+            path_logs = os.path.expanduser(config.get('configPaths', 'logs').format(strategy=strategy))
 
             with open(path_config, 'w') as configfile:
                 config.write(configfile)
@@ -198,7 +195,10 @@ def main():
                 # Exit if abrupt termination (SIGINT)
                 if event.is_set():
                     print("All threads terminated, exiting...")
-                    exit()
+                    event.clear()
+
+                    if handler_flag:
+                        exit()
             
                 # Recalculates left rounds
                 step_rounds = rounds - get_last_round(config)
@@ -206,5 +206,14 @@ def main():
                 if os.path.exists(path_exception):
                     os.remove(path_exception)
 
+                    # Leer el archivo CSV
+                    df = pd.read_csv(f'{path_logs}/log_{act_exec+1}.csv')
+
+                    # Seleccionar las primeras 10 filas
+                    df_first = df.head(get_last_round(config))
+
+                    # Guardar las primeras 10 filas de vuelta al archivo CSV
+                    df_first.to_csv(f'{path_logs}/log_{act_exec+1}.csv', index=False)
+            
 if __name__ == "__main__":
     main()

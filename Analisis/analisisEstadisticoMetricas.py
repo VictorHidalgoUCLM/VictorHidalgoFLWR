@@ -42,7 +42,7 @@ def darken_color(hex_color, factor=0.8):
     # Convertir los nuevos valores RGB a código hexadecimal
     return rgb_to_hex((r_nuevo, g_nuevo, b_nuevo))
 
-scenarios = ['FedAvg', 'FedOpt', 'FedProx', 'QFedAvg']
+scenarios = ['FedAvg']
 
 for scenario in scenarios:
     if scenario == 'Escenario 1' or scenario == 'Escenario 3':
@@ -54,10 +54,10 @@ for scenario in scenarios:
         disp_name = ['Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 4 (RP3)']
 
     else:
-        dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry6']
-        disp_name = ['Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP4)']
+        dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry3']
+        disp_name = ['Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP3)']
 
-    metricas = ['Net_transmit(B/s)', 'Net_receive(B/s)', 'CPU_usage(%)', 'RAM_usage(%)', 'Swap_usage(%)']
+    metricas = ['Net_transmit(B/s)', 'Net_receive(B/s)', 'CPU_usage(%)', 'RAM_usage(%)', 'Swap_usage(%)', 'Temp(ºC)', 'Mem_faults', 'Mem_majfaults']
 
     # Diccionario para almacenar los resultados de las pruebas
     resultados = {'Metrica': [], 'Dispositivo': [], 'Shapiro': [], 'Levene': [], 'ANOVA': [], 'Kruskal': []}
@@ -148,7 +148,7 @@ for scenario in scenarios:
 
     """Creación de las gráficas de análisis de los datos"""
     # Crear subplots para cada combinación de métrica y dispositivo
-    fig, axs = plt.subplots(nrows=len(metricas)-len(posiciones), ncols=len(dispositivos), figsize=(18, 11), layout='constrained')
+    fig, axs = plt.subplots(nrows=len(metricas)-len(posiciones), ncols=len(dispositivos), figsize=(18, 13), layout='constrained')
     fig2, axs2 = plt.subplots(nrows=len(metricas)-len(posiciones), ncols=len(dispositivos), figsize=(18, 11), layout='constrained')
     fig3, axs3 = plt.subplots(nrows=len(metricas)-len(posiciones), figsize=(18, 11), layout='constrained', sharex=True)
 
@@ -162,33 +162,36 @@ for scenario in scenarios:
 
             # Lee el archivo CSV
             df_summ = pd.read_csv(f"{directorio}/{metric_log}")
-            
-            # Analizamos cada una de las métricas que queremos
-            for i, (metrica) in enumerate(metricas):
+
+            i = 0
+            k = 0
+            while i < len(metricas):
+                metrica = metricas[i]
+
                 if i in posiciones:
-                    i -= 1
+                    i += 1
                     continue
 
-                ax = axs[i][j]
-                ax2 = axs2[i][j]
+                ax = axs[k][j]
+                ax2 = axs2[k][j]
 
                 for _, datos_grupo in df_summ.groupby('Ejecucion'):
                     if datos_grupo[metrica].nunique() == 1:
                         continue
 
                 if j == 0 and metrica == 'Net_receive(B/s)':
-                    cambios_ronda = sorted(df_summ.loc[df_summ['Ejecucion']==1][metrica].nlargest(60).index)
+                    cambios_ronda = sorted(df_summ.loc[df_summ['Ejecucion']==1][metrica].nlargest(120).index)
 
                 means = df_summ.groupby('Ejecucion')[metrica].mean()
 
-                sns.histplot(df_summ.loc[df_summ['Ejecucion']==1][metrica], ax=ax2, color=disp_color[j])
                 sns.boxplot(x='Ejecucion', y=metrica, data=df_summ, ax=ax, color=disp_color[j])
+                #sns.histplot(df_summ.loc[df_summ['Ejecucion']==1][metrica], ax=ax2, color=disp_color[j])
 
                 for l, mean in enumerate(means):
                     ax.scatter(l, mean, marker='x', s=125, facecolors='black', zorder=3)
 
                 if j == len(dispositivos)-1:
-                    ax3 = axs3[i]
+                    ax3 = axs3[k]
                     sns.lineplot(df_summ.loc[df_summ['Ejecucion']==1], x=[i * 5 for i in range(1, len(df_summ.loc[df_summ['Ejecucion']==1]) + 1)], y=metrica, ax=ax3)
                     ax3.set_ylabel(metrica, fontsize=16)
                     ax3.set_xlabel('Tiempo (s)')
@@ -216,6 +219,9 @@ for scenario in scenarios:
                 else:
                     ax.set_ylabel('')
                     ax2.set_ylabel('')
+
+                i += 1
+                k += 1
                     
 
     fig.savefig(f'{directorio_figuras}/boxandwhispers.png', dpi=150)
@@ -230,7 +236,7 @@ for scenario in scenarios:
 
 
     # Crear la figura y el eje
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(8, 5))
 
     # Ocultar los ejes
     ax.axis('off')

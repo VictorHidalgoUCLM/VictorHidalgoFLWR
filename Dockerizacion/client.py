@@ -21,6 +21,7 @@ import tensorflow.keras.backend as K
 import numpy as np
 import math
 
+import gc
 
 def recall_f(y_true, y_pred):
     # Obtener las clases predichas
@@ -63,26 +64,17 @@ def precision_f(y_true, y_pred):
     return precision
 
 
-def f1_score_f(y_true, y_pred):
-    precision_value = precision_f(y_true, y_pred)
-    recall_value = recall_f(y_true, y_pred)
-    
-    f1 = 2 * (precision_value * recall_value) / (precision_value + recall_value + K.epsilon())
-    
-    return f1
-
-
-# Each client defines its own emtpy model, using MobileNet as architecture of DNN
-model = tf.keras.applications.MobileNet((32, 32, 1), classes=10, weights=None)
-model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
-
-
 class CifarClient(fl.client.NumPyClient):
     """Client class modified to get extra config hiperparameters"""
 
+
+    def __init__(self):
+        """Initializes the client with an empty model"""
+        self.model = tf.keras.applications.MobileNet((32, 32, 1), classes=10, weights=None)
+
     def get_parameters(self, config):
         """Returns local model weights"""
-        return model.get_weights()
+        return self.model.get_weights()
 
     def fit(self, parameters, config):
         """Fits the model with its own local data.
@@ -97,23 +89,20 @@ class CifarClient(fl.client.NumPyClient):
         server_round = config["server_round"]               # Current server_round
         proximal_mu = config.get("proximal_mu", 0.0)       # Only for FedProx, else defaults to 0
 
-        # Redefines local model, just in case we use FedProx
-        model = tf.keras.applications.MobileNet((32, 32, 1), classes=10, weights=None)
+        if server_round == 1:
+            if proximal_mu != 0.0:
+                # Adds regularizer l1_l2 to the model
+                regularizer = l1_l2(l1=0, l2=proximal_mu)
 
-        # If we are using FedProx
-        if proximal_mu != 0.0:
-            # Adds regularizer l1_l2 to the model
-            regularizer = l1_l2(l1=0, l2=proximal_mu)
+                # For each layer, regularizer is updated
+                for layer in self.model.layers:
+                    if hasattr(layer, 'kernel_regularizer'):
+                        layer.kernel_regularizer = regularizer
 
-            # For each layer, regularizer is updated
-            for layer in model.layers:
-                if hasattr(layer, 'kernel_regularizer'):
-                    layer.kernel_regularizer = regularizer
-
-        model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
+            self.model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
 
         # Charges initial parameters provided by server
-        model.set_weights(parameters)
+        self.model.set_weights(parameters)
 
         # Charges local-train data
         x_train = np.load(f"/data/trainx.npy")
@@ -128,63 +117,68 @@ class CifarClient(fl.client.NumPyClient):
 
         # Selects local data correctly in case 'start' > 'fin'
         if start < end:
-            x_train = x_train[start:end]
-            y_train = y_train[start:end]
+            x_train_subset = x_train[start:end]
+            y_train_subset = y_train[start:end]
         else:
-            x_train = np.concatenate((x_train[start:], x_train[:end]))
-            y_train = np.concatenate((y_train[start:], y_train[:end]))
+            x_train_subset = np.concatenate((x_train[start:], x_train[:end]))
+            y_train_subset = np.concatenate((y_train[start:], y_train[:end]))
+
+        del x_train, y_train
+        gc.collect()
 
         # Local model training, using read config
-        model.fit(
-            x_train,
-            y_train,
+        self.model.fit(
+            x_train_subset,
+            y_train_subset,
             epochs=epochs,
             batch_size=batch_size,
-            steps_per_epoch=math.ceil(len(x_train) / batch_size)
+            steps_per_epoch=math.ceil(len(x_train_subset) / batch_size / epochs)
         )
 
-        loss_distributed, accuracy = model.evaluate(x_train, y_train)
-        y_pred = model.predict(x_train)
+        loss_distributed, accuracy = self.model.evaluate(x_train_subset, y_train_subset, verbose=0)
+        y_pred = self.model.predict(x_train_subset)
 
-        recall = recall_f(y_train, y_pred)
-        precision = precision_f(y_train, y_pred)
-        f1_score = f1_score_f(y_train, y_pred)
+        #   Calculate metrics
+        precision_value = precision_f(y_train_subset, y_pred)
+        recall_value = recall_f(y_train_subset, y_pred)
+        f1 = 2 * (precision_value * recall_value) / (precision_value + recall_value + K.epsilon())
 
-        # If is needed to evaluate_on_fit
-        if evaluate_on_fit:
-            temp_param = model.get_weights()
+        len_xtrain = len(x_train_subset)
+        loss = 0.0
 
-            # Calls evaluate function
-            loss, _, _, _, _ = self.evaluate(temp_param, {})
-        
-        else:
-            loss = 0.0
+        del x_train_subset, y_train_subset, y_pred
+        gc.collect()
 
         # Returns model weights, number of data used to train
         # and metrics for the server
-        return model.get_weights(), len(x_train), {"accuracy": float(accuracy), "loss": float(loss), "loss_distributed": float(loss_distributed), "recall": float(recall), "precision": float(precision), "f1_score": float(f1_score)}
+        return self.model.get_weights(), len_xtrain, {"accuracy": float(accuracy), "loss": float(loss), "loss_distributed": float(loss_distributed), "recall": float(recall_value), "precision": float(precision_value), "f1_score": float(f1)}
 
     def evaluate(self, parameters, config):
         """Evaluates a given model with data test"""
-        model.set_weights(parameters)
+        self.model.set_weights(parameters)
 
         # Charges local-data test
         x_test = np.load(f"/data/testx.npy")
         y_test = np.load(f"/data/testy.npy")
+            
+        loss, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
+        y_pred = self.model.predict(x_test)
+    
+        #   Calculate metrics
+        precision_value = precision_f(y_test, y_pred)
+        recall_value = recall_f(y_test, y_pred)
+        f1 = 2 * (precision_value * recall_value) / (precision_value + recall_value + K.epsilon())
+    
+        len_xtest = len(x_test)
 
-        # Evaluates model with given parameters and test data
-        loss, accuracy = model.evaluate(x_test, y_test)
-        y_pred = model.predict(x_test)
-
-        recall = recall_f(y_test, y_pred)
-        precision = precision_f(y_test, y_pred)
-        f1_score = f1_score_f(y_test, y_pred)
+        del x_test, y_test, y_pred
+        gc.collect()
 
         # Returns loss
-        return loss, len(x_test), {"accuracy": float(accuracy), "recall": float(recall), "precision": float(precision), "f1_score": float(f1_score)}
+        return loss, len_xtest, {"accuracy": float(accuracy), "recall": float(recall_value), "precision": float(precision_value), "f1_score": float(f1)}
 
 
 # Starts federated client
-fl.client.start_client(server_address="172.24.100.129:8080",  # Server IP
+fl.client.start_client(server_address="172.24.100.136:8080",  # Server IP
                              client=CifarClient().to_client(),  # Client code is new instace of CifarClient class
                              )

@@ -1,3 +1,13 @@
+"""
+Data_Analyst will be instanciated as an object at a custom strategy,
+creates queries for each client and metric, which will be executed every
+5 seconds while training is done.
+
+This class scrapes prometheus in search of performance metrics, stored
+at a Pandas DataFrame.
+"""
+
+# Necessary modules
 import requests
 import yaml
 import os
@@ -5,26 +15,29 @@ import time
 import csv
 import configparser
 
-# Ruta al archivo de configuración
+# Reads config_file
 ruta_config = os.environ.get('CONFIG_PATH')
 config_file = configparser.ConfigParser()
 config_file.read(ruta_config)
 
-# Obtener configuraciones del archivo
+# Get config from config_file
 num_exec = config_file.get('configVariable', 'num_exec')
 strategy_name = config_file.get('configVariable', 'strategy')
 
 ruta_metrics = os.path.expanduser(config_file.get('configPaths', 'metrics').format(strategy=strategy_name))
+ruta_exception = os.path.expanduser(config_file.get('configPaths', 'exception'))
 
+# DataAnalyst class, used as object at custom strategies
 class DataAnalyst:
     def __init__(
             self,
-            prometheus_config_path,
-            prometheus_url,
-            image,
-            num_exec,
-            config):
-        # Inicialización de variables
+            prometheus_config_path,     # Local yaml file that configures prometheus
+            prometheus_url,             # API for querying prometheus
+            image,                      # Name of container image
+            num_exec,                   # Current num_exec
+            config):                    # Config file
+        
+        # Variable initialization, saves every parameter on self. variable
         self.init_time = 0
         self.prometheus_config_path = prometheus_config_path
         self.prometheus_url = prometheus_url
@@ -32,7 +45,7 @@ class DataAnalyst:
         self.num_exec = num_exec
         self.config = config
 
-        # Variables para el tiempo y las consultas
+        # Other variables
         self.elapsed_time = 0
         self.prometheus_api_url = f"{self.prometheus_url}/api/v1/query"
         self.raspberry_pis = []
@@ -42,14 +55,16 @@ class DataAnalyst:
         self.result_one_time = []
         self.result_recursive = []
 
-        # Contador para detectar caidas de las raspberries 
+        # Temporal counters
         self.same_cpu_counter = []
         self.prev_values = []
 
 
     def get_hostnames(self):
-        # Obtener nombres de host desde el archivo de configuración de
-        # Prometheus
+        """
+        Scrapes prometheus yaml config file locally, searches for
+        hostnames and saves them at self.raspberry_pis.
+        """
         with open(self.prometheus_config_path, 'r') as config_file:
             config_data = yaml.safe_load(config_file)
 
@@ -68,7 +83,10 @@ class DataAnalyst:
 
 
     def create_queries(self):
-        # Crear consultas para una vez y consultas recursivas
+        """
+        Creates one time queries and recursive queries, using {} for generating every
+        query for every hostname.
+        """
         recursive_queries = [
             'container_network_transmit_bytes_total{{hostname="{pi}",image="{image}"}}',
             'container_network_receive_bytes_total{{hostname="{pi}",image="{image}"}}',
@@ -93,7 +111,7 @@ class DataAnalyst:
             ]
 
         for raspberry_pi in self.raspberry_pis:
-            # Crear directorios para almacenar resultados
+            # Creates directory for storing metrics results for each hostname
             if not os.path.exists(os.path.expanduser(
                     f'{ruta_metrics}/{raspberry_pi}')):
                 os.makedirs(os.path.expanduser(
@@ -102,8 +120,7 @@ class DataAnalyst:
             output_file = f'{ruta_metrics}/{raspberry_pi}/ex_{num_exec}.csv'
             self.output_files.append(os.path.expanduser(output_file))
 
-            # Crear consultas para una vez y consultas recursivas para cada
-            # Raspberry Pi
+            # For loop that stores all queries at self.queries_recursive and self.queries_one_time
             queries = [query.format(pi=raspberry_pi, image=self.image)
                        for query in recursive_queries]
             self.queries_recursive.append(queries)
@@ -114,8 +131,11 @@ class DataAnalyst:
                     image=self.image) for query in one_time_queries]
             self.queries_one_time.append(queries)
 
+
     def execute_query(self, queries):
-        # Ejecutar consultas y obtener resultados
+        """
+        Executes one query and returns result
+        """
         result = []
 
         for query in queries:
@@ -133,7 +153,10 @@ class DataAnalyst:
         return result
 
     def execute_one_time_queries(self):
-        # Ejecutar consultas de una vez y manejar resultados
+        """
+        Executes all one_time_queries, calling execute_query
+        If all queries are responded, the program can continue
+        """
         for query in self.queries_one_time:
             query_result = self.execute_query(query)
 
@@ -150,7 +173,9 @@ class DataAnalyst:
         self.init_time = time.time()
 
     def execute_recursive_queries(self):
-        # Ejecutar consultas recursivas y manejar resultados
+        """
+        Executes all recurive queries, appending results at self.result_recursive
+        """
         self.elapsed_time = int(time.time() - self.init_time)
         self.result_recursive = []
 
@@ -161,8 +186,11 @@ class DataAnalyst:
                             for result in query_result for value in result]
             self.result_recursive.append(query_values)
 
+
     def export_data(self):
-        # Exportar datos a archivos CSV
+        """
+        Scrapes, cleans and stores all results of the queries
+        """
         for i, _ in enumerate(self.raspberry_pis):
             output_file = self.output_files[i]
 
@@ -201,6 +229,8 @@ class DataAnalyst:
 
                 if self.same_cpu_counter[i] >= 15:
                     print(f"Va a fallar {self.raspberry_pis[i]}, tiempo {self.elapsed_time}.")
+                    with open(ruta_exception, 'w') as file:
+                        file.write("Hola")
 
             else:
                 self.prev_values[i] = row[3]
