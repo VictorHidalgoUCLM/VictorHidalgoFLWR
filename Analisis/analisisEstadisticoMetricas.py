@@ -9,9 +9,6 @@ from scipy.stats import levene
 from scipy.stats import kruskal
 from scipy.stats import f_oneway
 
-import statsmodels.api as sm
-from statsmodels.formula.api import ols
-
 plt.rcParams["font.family"] = "serif"
 
 def hex_to_rgb(hex_color):
@@ -42,22 +39,23 @@ def darken_color(hex_color, factor=0.8):
     # Convertir los nuevos valores RGB a código hexadecimal
     return rgb_to_hex((r_nuevo, g_nuevo, b_nuevo))
 
-scenarios = ['FedAvg']
+scenarios = ['Escenario 2']
 
 for scenario in scenarios:
     if scenario == 'Escenario 1' or scenario == 'Escenario 3':
-        dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry6']
-        disp_name = ['Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP4)']
+        dispositivos = ['raspberrypi1', 'raspberrypi4', 'raspberrypi6']
+        disp_name = ['Client 1 (RP4)', 'Client 2 (RP4)', 'Client 3 (RP4)']
 
     elif scenario == 'Escenario 2':
-        dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry3']
-        disp_name = ['Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 4 (RP3)']
+        dispositivos = ['raspberrypi1', 'raspberrypi4', 'raspberrypi3']
+        disp_name = ['Client 1 (RP4)', 'Client 2 (RP4)', 'Client 4 (RP3)']
 
     else:
         dispositivos = ['raspberrypi1', 'raspberry4', 'raspberry3']
-        disp_name = ['Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP3)']
+        disp_name = ['Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 4 (RP3)']
 
-    metricas = ['Net_transmit(B/s)', 'Net_receive(B/s)', 'CPU_usage(%)', 'RAM_usage(%)', 'Swap_usage(%)', 'Temp(ºC)', 'Mem_faults', 'Mem_majfaults']
+    metricas = ['Net_transmit(B/s)', 'Net_receive(B/s)', 'CPU_usage(%)', 'RAM_usage(%)', 'Swap_usage(%)']
+    metricas_label = ['Transmission(B/s)', 'Reception(B/s)', 'CPU(%)', 'RAM(%)', 'Swap(%)']
 
     # Diccionario para almacenar los resultados de las pruebas
     resultados = {'Metrica': [], 'Dispositivo': [], 'Shapiro': [], 'Levene': [], 'ANOVA': [], 'Kruskal': []}
@@ -97,9 +95,9 @@ for scenario in scenarios:
                     estadistico, p_valor = shapiro(datos_grupo[metrica])
                     
                     if p_valor < 0.05:
-                        resultado_shapiro = "No pasa"
+                        resultado_shapiro = p_valor
                     else:
-                        resultado_shapiro = "Pasa"
+                        resultado_shapiro = p_valor
 
                     list_metrics.append(datos_grupo[metrica])
 
@@ -107,28 +105,28 @@ for scenario in scenarios:
                     # Test levene para comprobar homocedasticidad de los datos -> varianzas
                     estadistico, p_valor = levene(*list_metrics)
                     if p_valor < 0.05:
-                        resultado_levene = "No pasa"
+                        resultado_levene = p_valor
                     else:
-                        resultado_levene = "Pasa"
+                        resultado_levene = p_valor
                     
                     if p_valor > 0.05:
                         estadistico, p_valor = f_oneway(*list_metrics)
 
                         if p_valor < 0.05:
-                            resultado_ANOVA = "No pasa"
+                            resultado_ANOVA = p_valor
                         else:
-                            resultado_ANOVA = "Pasa"
+                            resultado_ANOVA = p_valor
                         resultado_kruskal = None
                     else:
                         resultado_ANOVA = None
 
-                    if resultado_shapiro == "No pasa" or resultado_levene == "No pasa":
+                    if resultado_shapiro < 0.05 or resultado_levene < 0.05:
                         estadistico, p_valor = kruskal(*list_metrics)
 
                         if p_valor < 0.05:
-                            resultado_kruskal = "No pasa"
+                            resultado_kruskal = p_valor
                         else:
-                            resultado_kruskal = "Pasa"
+                            resultado_kruskal = p_valor
 
                     else:
                         resultado_kruskal = None
@@ -140,6 +138,7 @@ for scenario in scenarios:
                     resultados['Levene'].append(resultado_levene)
                     resultados['ANOVA'].append(resultado_ANOVA)
                     resultados['Kruskal'].append(resultado_kruskal)
+                    print(resultados)
 
                 else:
                     nan[i] += 1
@@ -148,9 +147,9 @@ for scenario in scenarios:
 
     """Creación de las gráficas de análisis de los datos"""
     # Crear subplots para cada combinación de métrica y dispositivo
-    fig, axs = plt.subplots(nrows=len(metricas)-len(posiciones), ncols=len(dispositivos), figsize=(18, 13), layout='constrained')
-    fig2, axs2 = plt.subplots(nrows=len(metricas)-len(posiciones), ncols=len(dispositivos), figsize=(18, 11), layout='constrained')
-    fig3, axs3 = plt.subplots(nrows=len(metricas)-len(posiciones), figsize=(18, 11), layout='constrained', sharex=True)
+    fig, axs = plt.subplots(nrows=len(metricas)-len(posiciones), ncols=len(dispositivos), figsize=(22, 16), layout='constrained')
+    fig2, axs2 = plt.subplots(nrows=len(metricas)-len(posiciones), ncols=len(dispositivos), figsize=(22, 16), layout='constrained')
+    fig3, axs3 = plt.subplots(nrows=len(metricas)-len(posiciones), figsize=(22, 16), layout='constrained', sharex=True)
 
     for j, dispositivo in enumerate(dispositivos):
         directorio = f"/home/usuario/Escritorio/results/{scenario}/metrics/{dispositivo}"
@@ -167,6 +166,7 @@ for scenario in scenarios:
             k = 0
             while i < len(metricas):
                 metrica = metricas[i]
+                metrica_label = metricas_label[i]
 
                 if i in posiciones:
                     i += 1
@@ -180,12 +180,11 @@ for scenario in scenarios:
                         continue
 
                 if j == 0 and metrica == 'Net_receive(B/s)':
-                    cambios_ronda = sorted(df_summ.loc[df_summ['Ejecucion']==1][metrica].nlargest(120).index)
+                    cambios_ronda = sorted(df_summ.loc[df_summ['Ejecucion']==1][metrica].nlargest(60).index)
 
                 means = df_summ.groupby('Ejecucion')[metrica].mean()
 
                 sns.boxplot(x='Ejecucion', y=metrica, data=df_summ, ax=ax, color=disp_color[j])
-                #sns.histplot(df_summ.loc[df_summ['Ejecucion']==1][metrica], ax=ax2, color=disp_color[j])
 
                 for l, mean in enumerate(means):
                     ax.scatter(l, mean, marker='x', s=125, facecolors='black', zorder=3)
@@ -193,7 +192,7 @@ for scenario in scenarios:
                 if j == len(dispositivos)-1:
                     ax3 = axs3[k]
                     sns.lineplot(df_summ.loc[df_summ['Ejecucion']==1], x=[i * 5 for i in range(1, len(df_summ.loc[df_summ['Ejecucion']==1]) + 1)], y=metrica, ax=ax3)
-                    ax3.set_ylabel(metrica, fontsize=16)
+                    ax3.set_ylabel(metrica_label, fontsize=16)
                     ax3.set_xlabel('Tiempo (s)')
                     ax3.set_xlim(0, (len(df_summ.loc[df_summ['Ejecucion']==1]) + 1)*5)
 
@@ -207,15 +206,15 @@ for scenario in scenarios:
                     ax2.set_title(f'{disp_name[j]}', fontsize=16, pad=16)
 
                 if i == len(axs)-1:
-                    ax.set_xlabel('Valores')
-                    ax2.set_xlabel('Valores')
+                    ax.set_xlabel('Values')
+                    ax2.set_xlabel('Values')
                 else:
                     ax.set_xlabel('')
                     ax2.set_xlabel('')
 
                 if j == 0:
-                    ax.set_ylabel(metrica, fontsize=16)
-                    ax2.set_ylabel(metrica, fontsize=16)
+                    ax.set_ylabel(metrica_label, fontsize=16)
+                    ax2.set_ylabel(metrica_label, fontsize=16)
                 else:
                     ax.set_ylabel('')
                     ax2.set_ylabel('')
@@ -230,13 +229,32 @@ for scenario in scenarios:
 
     """Tabla"""
     df_resultados = pd.DataFrame(resultados)
-    df_resultados = df_resultados.set_index('Dispositivo').loc[dispositivos].reset_index()
-    df_resultados['Metrica'] = df_resultados['Dispositivo'] + '_' + df_resultados['Metrica']
-    df_resultados.drop(columns=['Dispositivo'], inplace=True)
+    df_resultados = df_resultados[['Dispositivo', 'Metrica', 'Shapiro', 'Levene', 'ANOVA', 'Kruskal']]
+    df_resultados['Dispositivo'] = df_resultados['Dispositivo'].mask(df_resultados['Dispositivo'].duplicated(), '')
+    print(df_resultados)
 
+    # Mapear las métricas usando un diccionario de traducción
+    metricas_mapping = {
+        'Net_transmit(B/s)': 'Transmission(B/s)',
+        'Net_receive(B/s)': 'Reception(B/s)',
+        'CPU_usage(%)': 'CPU(%)',
+        'RAM_usage(%)': 'RAM(%)',
+        'Swap_usage(%)': 'Swap(%)',
+    }
+
+    clientes_mapping = {
+        'raspberrypi1': 'Client 1 (RP4)',
+        'raspberrypi4': 'Client 2 (RP4)',
+        'raspberrypi6': 'Client 3 (RP4)',
+        'raspberrypi3': 'Client 4 (RP3)',
+    }
+
+    # Aplicar el mapeo al DataFrame
+    df_resultados['Metrica'] = df_resultados['Metrica'].replace(metricas_mapping)
+    df_resultados['Dispositivo'] = df_resultados['Dispositivo'].replace(clientes_mapping)
 
     # Crear la figura y el eje
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(9, 6))
 
     # Ocultar los ejes
     ax.axis('off')
@@ -247,10 +265,17 @@ for scenario in scenarios:
 
     # Crear la tabla
     tabla = ax.table(cellText=df_resultados.values,
-                    colLabels=df_resultados.columns,
+                    colLabels=['Device', 'Metric', 'Shapiro', 'Levene', 'ANOVA', 'Kruskal'],
                     cellLoc='center',
                     loc='center',
                     colWidths=[0.12 for _ in df_resultados.columns])
+
+    for i in range(1, len(df_resultados)+1):
+        if tabla[(i, 0)].get_text().get_text() == '':
+            tabla[(i, 0)].set_visible(False)
+
+    for i in range(len(df_resultados)+1):
+        tabla[(i, 1)].set_width(0.16)
 
     tabla.auto_set_font_size(False)
     tabla.set_fontsize(12)
@@ -268,14 +293,14 @@ for scenario in scenarios:
             cell = tabla.get_celld()[(i + 1, j)]  # +1 para saltar la fila de encabezados
             text = cell.get_text().get_text()
             if df_resultados.columns[j] == 'Shapiro':
-                if text == 'Pasa':
+                if text == 'Pass':
                     cell.set_facecolor(actual_colors[0])
-                elif text == 'No pasa':
+                elif text == 'Fail':
                     cell.set_facecolor(actual_colors[1])
             else:
-                if text == 'Pasa':
+                if text == 'Pass':
                     cell.set_facecolor(actual_colors[0])
-                elif text == 'No pasa':
+                elif text == 'Fail':
                     cell.set_facecolor(actual_colors[2])
                 else:
                     cell.set_facecolor(actual_colors[3])

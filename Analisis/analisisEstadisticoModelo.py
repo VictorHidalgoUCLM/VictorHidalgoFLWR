@@ -42,22 +42,22 @@ def format_yticks(y, pos):
     return f'{y:.2f}'
 
 
-metricas = ['accuracy', 'loss', 'precision', 'recall', 'f1_score']
+metricas = ['accuracy', 'loss']
 disp_color = ['tomato', 'greenyellow', 'aqua', 'violet']
 
-scenarios = ['FedAvg']
+scenarios = ['Escenario 1']
 
 for scenario in scenarios:
     if scenario == 'Escenario 1' or scenario == 'Escenario 3':
         dispositivos = ['Global', 'raspberrypi1_ev', 'raspberry4_ev', 'raspberry6_ev']
-        disp_name = ['Modelo agregado', 'Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP4)']
+        disp_name = ['Aggregated model', 'Client 1 (RP4)', 'Client 2 (RP4)', 'Client 3 (RP4)']
 
     elif scenario == 'Escenario 2':
         dispositivos = ['Global', 'raspberrypi1_ev', 'raspberry4_ev', 'raspberry3_ev']
-        disp_name = ['Modelo agregado', 'Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 4 (RP3)']
+        disp_name = ['Aggregated model', 'Client 1 (RP4)', 'Client 2 (RP4)', 'Client 4 (RP3)']
     else:
         dispositivos = ['Global', 'raspberrypi1_ev', 'raspberry4_ev', 'raspberry3_ev']
-        disp_name = ['Modelo agregado', 'Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 3 (RP3)']
+        disp_name = ['Modelo agregado', 'Cliente 1 (RP4)', 'Cliente 2 (RP4)', 'Cliente 4 (RP3)']
 
     directorio = f"/home/usuario/Escritorio/results/{scenario}/logs"
 
@@ -94,9 +94,9 @@ for scenario in scenarios:
                 # Test shapiro-wilk -> Normalidad de los datos
                 estadistico, p_valor = shapiro(datos_grupo[col_name])
                 if p_valor > 0.05:
-                    resultado_shapiro = "Pasa"
+                    resultado_shapiro = p_valor
                 else:
-                    resultado_shapiro = "No pasa"
+                    resultado_shapiro = p_valor
                     
                 lista.append(datos_grupo[col_name])
 
@@ -105,7 +105,7 @@ for scenario in scenarios:
             if i == 0:
                 ax2.set_title(f'{disp_name[j]}', fontsize=16, pad=16)
             else:
-                ax2.set_xlabel('Valores')
+                ax2.set_xlabel('Values')
 
             if j == 0:
                 ax2.set_ylabel(metrica, fontsize=16)
@@ -115,34 +115,34 @@ for scenario in scenarios:
             # Test levene para comprobar homocedasticidad de los datos -> varianzas
             estadistico, p_valor = levene(*lista)
             if p_valor > 0.05:
-                resultado_levene = "Pasa"
+                resultado_levene = p_valor
 
                 
                 resultado_ANOVA = f_oneway(*lista)
 
                 if resultado_ANOVA.pvalue < 0.05:
-                    resultado_ANOVA = "No pasa"
+                    resultado_ANOVA = p_valor
                 else:
-                    resultado_ANOVA = "Pasa"
+                    resultado_ANOVA = p_valor
 
             else:
-                resultado_levene = "No pasa"
-                resultado_ANOVA = "----"
+                resultado_levene = p_valor
+                resultado_ANOVA = None
 
             try:
-                if resultado_shapiro == "No pasa" or resultado_levene == "No pasa":
+                if resultado_shapiro < 0.05 or resultado_levene < 0.05:
                     estadistico, p_valor = kruskal(*lista)
 
                     if p_valor > 0.05:
-                        resultado_kruskal = "Pasa"
+                        resultado_kruskal = p_valor
                     else:
-                        resultado_kruskal = "No pasa"
+                        resultado_kruskal = p_valor
 
                 else:
-                    resultado_kruskal = "----"
+                    resultado_kruskal = None
                     
             except ValueError as e:
-                resultado_kruskal = "No pasa"
+                resultado_kruskal = None
                 print("Error al realizar la prueba de Kruskal-Wallis:", e)
                 pass
 
@@ -160,7 +160,7 @@ for scenario in scenarios:
             if i == 0:
                 ax.set_title(f'{disp_name[j]}', fontsize=16, pad=16)
             else:
-                ax.set_xlabel('Ejecución')
+                ax.set_xlabel('Execution')
 
             if j == 0:
                 ax.set_ylabel(metrica, fontsize=16)
@@ -195,10 +195,20 @@ for scenario in scenarios:
 
     # Crear un DataFrame a partir del diccionario
     df_resultados = pd.DataFrame(resultados)
-    df_resultados = df_resultados.set_index('Dispositivo').loc[dispositivos].reset_index()
-    df_resultados['Metrica'] = df_resultados['Dispositivo'].str.replace('_ev', '') + '_' + df_resultados['Metrica']
-    df_resultados.drop(columns=['Dispositivo'], inplace=True)
+    df_resultados['Metrica'] = df_resultados['Metrica'].mask(df_resultados['Metrica'].duplicated(), '')
 
+    clientes_mapping = {
+        'Global': 'Aggregated',
+        'raspberrypi1_ev': 'Client 1 (RP4)',
+        'raspberry4_ev': 'Client 2 (RP4)',
+        'raspberry6_ev': 'Client 3 (RP4)',
+        'raspberry3_ev': 'Client 3 (RP3)',
+    }
+
+    # Aplicar el mapeo al DataFrame
+    df_resultados['Dispositivo'] = df_resultados['Dispositivo'].replace(clientes_mapping)
+
+    print(df_resultados)
 
     """Creación de la tabla que resume los test estadísticos"""
     # Crear la figura y el eje
@@ -207,16 +217,23 @@ for scenario in scenarios:
     # Ocultar los ejes
     ax.axis('off')
 
-    colors = ["#65e830", "#e8be30", "#e84c30", "#add8e6"]
+    colors = ["#65e830", "#e8be30", "#e84c30", "#cccccc"]
     darkened_colors = [darken_color(color) for color in colors]
     grey_color = darken_color("#ffffff")
 
     # Crear la tabla
     tabla = ax.table(cellText=df_resultados.values,
-                    colLabels=df_resultados.columns,
+                    colLabels=['Device', 'Metric', 'Shapiro', 'Levene', 'ANOVA', 'Kruskal'],
                     cellLoc='center',
                     loc='center',
                     colWidths=[0.12 for _ in df_resultados.columns])
+
+    for i in range(1, len(df_resultados)+1):
+        if tabla[(i, 0)].get_text().get_text() == '':
+            tabla[(i, 0)].set_visible(False)
+
+    for i in range(len(df_resultados)+1):
+        tabla[(i, 1)].set_width(0.16)
 
     tabla.auto_set_font_size(False)
     tabla.set_fontsize(12)
@@ -234,14 +251,14 @@ for scenario in scenarios:
             cell = tabla.get_celld()[(i + 1, j)]  # +1 para saltar la fila de encabezados
             text = cell.get_text().get_text()
             if df_resultados.columns[j] == 'Shapiro':
-                if text == 'Pasa':
+                if text == 'Pass':
                     cell.set_facecolor(actual_colors[0])
-                elif text == 'No pasa':
+                elif text == 'Fail':
                     cell.set_facecolor(actual_colors[1])
             else:
-                if text == 'Pasa':
+                if text == 'Pass':
                     cell.set_facecolor(actual_colors[0])
-                elif text == 'No pasa':
+                elif text == 'Fail':
                     cell.set_facecolor(actual_colors[2])
                 elif text == '----':
                     cell.set_facecolor(actual_colors[3])
@@ -249,7 +266,11 @@ for scenario in scenarios:
     # Iterar sobre las cabeceras de fila y aplicar el color
     for i in range(len(df_resultados.index)):  # Iterar sobre las etiquetas de fila
         cell = tabla[(i + 1, 0)]  # Índices de la fila i y última columna
-        if i%2 != 0:
+        if i%2 == 0:
+            cell.set_facecolor(grey_color)  # Cambia '#your_color' con el color deseado
+        
+        cell = tabla[(i + 1, 1)]  # Índices de la fila i y última columna
+        if i%2 == 0:
             cell.set_facecolor(grey_color)  # Cambia '#your_color' con el color deseado
 
     plt.savefig(f'{directorio_figuras}/tabla.png', dpi=150)
@@ -276,10 +297,10 @@ for scenario in scenarios:
     yticks = [min_Global_loss] + list(ax2.get_yticks()[2:])
     ax2.set_yticks(yticks)
 
-    ax2.set_xlabel('Ronda de Federated Learning')
+    ax2.set_xlabel('Federated Learning round')
     ax2.set_ylabel('Loss')
     ax2.set_ylim(0, df_ejecucion_1['Global_loss'].max() + 0.1)
-    ax2.set_xlim(1,60)
+    ax2.set_xlim(1,30)
 
     plt.tight_layout()
     plt.savefig(f'{directorio_figuras}/model.png', dpi=150)
